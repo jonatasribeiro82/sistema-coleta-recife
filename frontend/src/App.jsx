@@ -18,35 +18,75 @@ function App() {
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
 
+  // Função para garantir que a URL da imagem use o IP da rede e não localhost
+  const formatMediaUrl = (url) => {
+    if (!url) return null;
+    return url.replace('localhost', '192.168.11.89').replace('127.0.0.1', '192.168.11.89');
+  };
+
   const load = async () => {
     setLoading(true);
-    try { const data = await getOccurrences(20); setOccurrences(data.items || []); } 
-    catch { setError("Erro ao carregar dados."); } 
-    finally { setLoading(false); }
+    setError("");
+    try { 
+      const data = await getOccurrences(20); 
+      setOccurrences(data.items || []); 
+    } 
+    catch (err) { 
+      setError("Erro ao carregar dados do servidor."); 
+    } 
+    finally { 
+      setLoading(false); 
+    }
   };
 
   const handleApplyFilters = async (f) => {
     setLoading(true);
-    try { const data = await filterOccurrences(f); setOccurrences(data.items || []); } 
-    catch { setError("Erro nos filtros."); } 
-    finally { setLoading(false); }
+    try { 
+      const data = await filterOccurrences(f); 
+      setOccurrences(data.items || []); 
+    } 
+    catch { 
+      setError("Erro ao aplicar filtros."); 
+    } 
+    finally { 
+      setLoading(false); 
+    }
   };
 
   const handleUpload = async (p) => {
     try { 
-      setSuccessMessage("Processando..."); 
+      setError("");
+      setSuccessMessage("🚀 Processando análise de IA..."); 
       const res = await uploadOccurrenceImage(p); 
-      if(res.success) { setSuccessMessage("Enviado com sucesso!"); await load(); }
-    } catch { setError("Erro no upload."); }
+      
+      if(res.success) { 
+        setSuccessMessage("✅ Ocorrência salva com sucesso!"); 
+        // Limpa a mensagem de sucesso após 4 segundos
+        setTimeout(() => setSuccessMessage(""), 4000);
+        await load(); 
+      }
+    } catch (err) { 
+      setError("Falha no upload. Verifique o servidor."); 
+      setSuccessMessage("");
+    }
   };
 
-  // Melhoria para sabermos exatamente o que chegou do servidor
   const handleOpenMedia = async (id) => {
-    const data = await getOccurrenceMedia(id);
-    if (data.success) {
-      setSelectedMedia(data);
-    } else {
-      alert("Erro ao buscar a foto: " + data.error);
+    try {
+      const data = await getOccurrenceMedia(id);
+      if (data.success) {
+        // Aplica a correção de IP nas URLs que vêm do banco
+        const formattedData = {
+          ...data,
+          original_image_url: formatMediaUrl(data.original_image_url),
+          annotated_image_url: formatMediaUrl(data.annotated_image_url)
+        };
+        setSelectedMedia(formattedData);
+      } else {
+        alert("As imagens desta ocorrência ainda não foram processadas.");
+      }
+    } catch (err) {
+      alert("Erro de conexão ao buscar mídias.");
     }
   };
 
@@ -54,6 +94,10 @@ function App() {
 
   return (
     <div className="app-shell">
+      {/* Alertas Flutuantes de Feedback */}
+      {successMessage && <div className="toast success-toast">{successMessage}</div>}
+      {error && <div className="toast error-toast">{error}</div>}
+
       <div className="hero-panel">
         <div>
           <p className="hero-kicker">Consórcio Recife Ambiental</p>
@@ -78,48 +122,44 @@ function App() {
 
       <section className="grid">
         {occurrences.map((o) => (
-          <div key={o.occurrence_id}><OccurrenceCard occurrence={o} /><button className="media-button" onClick={() => handleOpenMedia(o.occurrence_id)}>Ver mídias</button></div>
+          <div key={o.occurrence_id} className="card-container">
+            <OccurrenceCard occurrence={o} />
+            <button className="media-button" onClick={() => handleOpenMedia(o.occurrence_id)}>
+              🔎 Ver Evidências
+            </button>
+          </div>
         ))}
       </section>
 
       <OccurrenceTable occurrences={occurrences} onOpenMedia={handleOpenMedia} />
 
-      {/* 👇 O PAINEL DE EVIDÊNCIAS AGORA VAI FLUTUAR NO MEIO DA TELA 👇 */}
+      {/* Painel de Evidências (Modal) */}
       {selectedMedia && (
-        <div style={{
-          position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', 
-          backgroundColor: 'rgba(0,0,0,0.8)', zIndex: 9999, 
-          display: 'flex', justifyContent: 'center', alignItems: 'center'
-        }}>
-          <section className="media-panel" style={{
-            background: 'white', padding: '20px', borderRadius: '12px',
-            width: '90%', maxWidth: '800px', maxHeight: '90vh', overflowY: 'auto'
-          }}>
-            <div className="media-header" style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
-              <h2>Evidências da IA</h2>
-              <button 
-                className="secondary-button" 
-                onClick={() => setSelectedMedia(null)}
-                style={{ background: '#ff4d4f', color: 'white', border: 'none', padding: '10px 15px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}
-              >
-                FECHAR (X)
-              </button>
+        <div className="modal-overlay" onClick={() => setSelectedMedia(null)}>
+          <section className="media-panel" onClick={(e) => e.stopPropagation()}>
+            <div className="media-header">
+              <h2>Análise de Evidências: {selectedMedia.occurrence_id}</h2>
+              <button className="close-button" onClick={() => setSelectedMedia(null)}>FECHAR (X)</button>
             </div>
             
-            <div className="media-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-              {selectedMedia.original_image_url ? (
-                <div>
-                  <p style={{fontWeight: 'bold'}}>📸 Imagem Original</p>
-                  <img src={selectedMedia.original_image_url} style={{ width: '100%', borderRadius: '8px' }} alt="Original" />
-                </div>
-              ) : <p>Imagem original não registrada.</p>}
+            <div className="media-grid">
+              <div className="media-box">
+                <p className="media-title">📸 Imagem Original</p>
+                {selectedMedia.original_image_url ? (
+                  <img src={selectedMedia.original_image_url} alt="Original" />
+                ) : (
+                  <div className="no-image">Não disponível</div>
+                )}
+              </div>
 
-              {selectedMedia.annotated_image_url ? (
-                <div>
-                  <p style={{fontWeight: 'bold', color: '#0066cc'}}>🤖 Análise da IA (YOLO)</p>
-                  <img src={selectedMedia.annotated_image_url} style={{ width: '100%', borderRadius: '8px' }} alt="IA Analisada" />
-                </div>
-              ) : <p>Análise da IA não registrada.</p>}
+              <div className="media-box">
+                <p className="media-title ia-title">🤖 Análise YOLOv8</p>
+                {selectedMedia.annotated_image_url ? (
+                  <img src={selectedMedia.annotated_image_url} alt="IA Analisada" />
+                ) : (
+                  <div className="no-image">Processando IA...</div>
+                )}
+              </div>
             </div>
           </section>
         </div>
@@ -127,4 +167,5 @@ function App() {
     </div>
   );
 }
+
 export default App;

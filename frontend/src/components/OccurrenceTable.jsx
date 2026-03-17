@@ -36,7 +36,17 @@ function OccurrenceTable({ occurrences, onOpenMedia }) {
 
   const filteredAndSortedData = useMemo(() => {
     const filtered = occurrences.filter((item) => {
-      const joined = [item.occurrence_id, item.status, item.priority, item.severity, item.camera_id, item.source_type, item.reported_by, item.address, item.estimated_volume_label].map(normalizeValue).join(" ");
+      const joined = [
+        item.occurrence_id, 
+        item.status, 
+        item.priority, 
+        item.severity, 
+        item.camera_id, 
+        item.source_type, 
+        item.reported_by, 
+        item.address, 
+        item.estimated_volume_label
+      ].map(normalizeValue).join(" ");
       return joined.includes(normalizeValue(searchTerm));
     });
     return [...filtered].sort((a, b) => compareValues(a[sortConfig.key], b[sortConfig.key], sortConfig.direction));
@@ -45,12 +55,23 @@ function OccurrenceTable({ occurrences, onOpenMedia }) {
   return (
     <section className="table-section">
       <div className="section-header">
-        <div><p className="section-kicker">Auditoria operacional</p><h2>Tabela executiva de ocorrências</h2></div>
+        <div>
+          <p className="section-kicker">Auditoria operacional</p>
+          <h2>Tabela executiva de ocorrências</h2>
+        </div>
         <span className="results-pill">{filteredAndSortedData.length} registros</span>
       </div>
+      
       <div className="table-toolbar">
-        <input type="text" className="table-search" placeholder="Buscar por ID, câmera, status, prioridade, endereço..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+        <input 
+          type="text" 
+          className="table-search" 
+          placeholder="Buscar por ID, câmera, status, prioridade, endereço..." 
+          value={searchTerm} 
+          onChange={(e) => setSearchTerm(e.target.value)} 
+        />
       </div>
+
       <div className="table-card">
         <div className="table-wrapper">
           <table className="occurrence-table">
@@ -71,25 +92,63 @@ function OccurrenceTable({ occurrences, onOpenMedia }) {
               {filteredAndSortedData.length === 0 ? (
                 <tr><td colSpan="9" className="table-empty">Nenhuma ocorrência encontrada.</td></tr>
               ) : (
-                filteredAndSortedData.map((occurrence) => (
-                  <tr key={occurrence.occurrence_id}>
-                    <td>{occurrence.occurrence_id}</td>
-                    <td>{occurrence.created_at || "N/A"}</td>
-                    <td>{occurrence.status || "N/A"}</td>
-                    <td>{occurrence.priority || "N/A"}</td>
-                    <td>{occurrence.severity || "N/A"}</td>
-                    <td>{occurrence.camera_id || "N/A"}</td>
-                    <td>{occurrence.total_detections ?? 0}</td>
-                    <td>{occurrence.estimated_volume_label || "N/A"}</td>
-                    <td><button className="table-action-button" onClick={() => onOpenMedia(occurrence.occurrence_id)}>Ver mídias</button></td>
-                  </tr>
-                ))
+                filteredAndSortedData.map((occurrence) => {
+                  const hasIA = !!(occurrence.annotated_image_path || occurrence.vision_analysis);
+                  
+                  return (
+                    <tr key={occurrence.occurrence_id}>
+                      <td>{occurrence.occurrence_id}</td>
+                      <td>{occurrence.created_at || "N/A"}</td>
+                      <td>{occurrence.status || "N/A"}</td>
+                      <td>{occurrence.priority || "N/A"}</td>
+                      <td>{occurrence.severity || "N/A"}</td>
+                      <td>{occurrence.camera_id || "N/A"}</td>
+                      <td>{occurrence.total_detections ?? occurrence.vision_analysis?.total_detections ?? 0}</td>
+                      <td>{occurrence.estimated_volume_label || "N/A"}</td>
+                      <td>
+                        {/* 🛡️ MUDANÇA DE CLASSE PARA ELIMINAR O ERRO "BLOQUEADA" */}
+                        <button 
+                          className="btn-ver-midias-blindado" 
+                          onClick={() => onOpenMedia(occurrence.occurrence_id)}
+                          style={{
+                            backgroundColor: hasIA ? '#2563eb' : '#64748b',
+                            color: 'white',
+                            padding: '8px 16px',
+                            borderRadius: '6px',
+                            border: 'none',
+                            cursor: 'pointer',
+                            fontSize: '13px',
+                            fontWeight: '600',
+                            transition: 'all 0.2s ease',
+                            boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+                          }}
+                        >
+                          {hasIA ? "🔍 Ver Mídias" : "📄 Detalhes"}
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
         </div>
       </div>
+      
+      {/* 🛠️ CSS Embutido para garantir que NADA injete texto no novo botão */}
+      <style dangerouslySetInnerHTML={{ __html: `
+        .btn-ver-midias-blindado::before, 
+        .btn-ver-midias-blindado::after {
+          content: none !important;
+          display: none !important;
+        }
+        .btn-ver-midias-blindado:hover {
+          filter: brightness(1.1);
+          transform: translateY(-1px);
+        }
+      `}} />
     </section>
   );
 }
+
 export default OccurrenceTable;

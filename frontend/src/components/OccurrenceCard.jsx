@@ -17,27 +17,29 @@ function getBadgeClass(type, value) {
 }
 
 function OccurrenceCard({ occurrence }) {
-  // Pegando os dados de dentro das "gavetas" corretas (location_analysis e vision_analysis)
-  const lat = occurrence.latitude || occurrence?.location_analysis?.latitude;
-  const lon = occurrence.longitude || occurrence?.location_analysis?.longitude;
-  const address = occurrence.address || occurrence?.location_analysis?.address || "N/A";
+  // Varredura completa para GPS e Endereço
+  const lat = occurrence.latitude || occurrence.location_analysis?.latitude;
+  const lon = occurrence.longitude || occurrence.location_analysis?.longitude;
+  const address = occurrence.address || occurrence.location_analysis?.address || "N/A";
 
-  // O TRADUTOR DEFINITIVO 🚀
+  // O TRADUTOR BLINDADO 🚀 (Acha a imagem em qualquer variável)
   const getImageUrl = () => {
     const backendUrl = "http://192.168.11.89:8000";
     
-    // Procura a imagem com IA dentro do vision_analysis
-    const annotatedPath = occurrence?.vision_analysis?.annotated_image_path || occurrence.annotated_image_path;
+    // Procura a IA em todos os lugares possíveis do seu banco
+    const annotated = occurrence.annotated_image_path || occurrence.annotated_image_url || occurrence.vision_analysis?.annotated_image_path;
     
-    // Procura a imagem original (o Python chama de image_path)
-    const rawPath = occurrence.image_path || occurrence.raw_image_path;
+    // Procura a foto original em todos os lugares possíveis
+    const raw = occurrence.image_path || occurrence.raw_image_path || occurrence.raw_image_url;
 
-    if (annotatedPath) {
-      const filename = String(annotatedPath).split(/[\/\\]/).pop(); 
+    // Se achou a IA, monta o link perfeito
+    if (annotated) {
+      const filename = String(annotated).split(/[\/\\]/).pop(); 
       return `${backendUrl}/media/annotated/${filename}`;
     }
-    if (rawPath) {
-      const filename = String(rawPath).split(/[\/\\]/).pop();
+    // Se achou a original, monta o link perfeito
+    if (raw) {
+      const filename = String(raw).split(/[\/\\]/).pop();
       return `${backendUrl}/media/raw/${filename}`;
     }
     return null;
@@ -45,15 +47,15 @@ function OccurrenceCard({ occurrence }) {
 
   const imageUrl = getImageUrl();
   
-  // Confere se a gaveta vision_analysis existe para acender a etiqueta "IA Analisada"
-  const hasAnalysis = !!occurrence?.vision_analysis || !!occurrence.annotated_image_path;
+  // Confere se a IA rodou para mostrar a etiqueta verde
+  const hasAnalysis = !!(occurrence.annotated_image_path || occurrence.annotated_image_url || occurrence.vision_analysis?.annotated_image_path);
 
   return (
     <div className="occurrence-card executive-card">
       <div className="occurrence-top">
         <div>
           <p className="occurrence-label">Ocorrência</p>
-          <h3>{occurrence.occurrence_id}</h3>
+          <h3 style={{ fontSize: '1.1rem', wordBreak: 'break-all' }}>{occurrence.occurrence_id}</h3>
         </div>
         <div className="occurrence-badges">
           <span className={getBadgeClass("status", occurrence.status)}>
@@ -71,6 +73,7 @@ function OccurrenceCard({ occurrence }) {
             src={imageUrl} 
             alt="Ocorrência" 
             style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+            onError={(e) => { e.target.onerror = null; e.target.style.display = 'none'; }}
           />
         ) : (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#64748b' }}>
@@ -99,7 +102,7 @@ function OccurrenceCard({ occurrence }) {
         
         <div className="detail-item">
           <span className="detail-label">Detecções</span>
-          <span className="detail-value">{occurrence.total_detections ?? 0}</span>
+          <span className="detail-value">{occurrence.total_detections ?? occurrence.vision_analysis?.total_detections ?? 0}</span>
         </div>
       </div>
 
