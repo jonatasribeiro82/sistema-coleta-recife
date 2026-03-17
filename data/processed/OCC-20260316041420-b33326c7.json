@@ -1,0 +1,37 @@
+{
+    "occurrence_id": "OCC-20260316041420-b33326c7",
+    "created_at": "2026-03-16T04:14:20.294531Z",
+    "source": {
+        "source_type": "manual_upload",
+        "image_path": "data\\raw_images\\20260316041418_lixo-02_-_Copia.jpeg",
+        "camera_id": "brasil",
+        "reported_by": "web_user"
+    },
+    "status": "sem_detecção",
+    "priority": "monitoramento",
+    "location_analysis": {
+        "latitude": -7.9508,
+        "longitude": -34.8938,
+        "address": "Localização Real via GPS",
+        "city": "Recife"
+    },
+    "vision_analysis": {
+        "success": true,
+        "message": "Sucesso.",
+        "detections": [],
+        "summary": {
+            "total_detections": 0,
+            "waste_category_summary": {},
+            "waste_estimation": {
+                "image_area": 737280.0,
+                "total_detected_area": 0,
+                "occupied_ratio": 0.0,
+                "estimated_volume_label": "pequeno",
+                "severity": "baixo",
+                "estimated_items_count": 0
+            }
+        },
+        "annotated_image_path": "output\\reports\\20260316041418_lixo-02_-_Copia_annotated.jpg"
+    },
+    "extra_metadata": {}
+}

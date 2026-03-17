@@ -1,0 +1,39 @@
+{
+    "occurrence_id": "OCC-20260315004210-fe4e2f47",
+    "created_at": "2026-03-15T00:42:10.982765Z",
+    "source": {
+        "source_type": "manual_upload",
+        "image_path": "data/raw_images/lixo_claro.jpg",
+        "camera_id": "cam_001",
+        "reported_by": "jonatas"
+    },
+    "status": "sem_detecção",
+    "priority": "monitoramento",
+    "location_analysis": {
+        "success": true,
+        "method": "camera",
+        "address": "Avenida Cruz Cabugá, Santo Amaro, Recife, Região Geográfica Imediata do Recife, Região Metropolitana do Recife, Região Geográfica Intermediária do Recife, Pernambuco, 50040-000, Brasil"
+    },
+    "vision_analysis": {
+        "success": true,
+        "message": "Sucesso.",
+        "detections": [],
+        "summary": {
+            "total_detections": 0,
+            "waste_category_summary": {},
+            "waste_estimation": {
+                "image_area": 356608.0,
+                "total_detected_area": 0,
+                "occupied_ratio": 0.0,
+                "estimated_volume_label": "pequeno",
+                "severity": "baixo",
+                "estimated_items_count": 0
+            }
+        },
+        "annotated_image_path": "output\\reports\\lixo_claro_annotated.jpg"
+    },
+    "extra_metadata": {
+        "project": "Residência Softex - Consórcio Recife Ambiental",
+        "module": "waste_intelligence_mvp"
+    }
+}
