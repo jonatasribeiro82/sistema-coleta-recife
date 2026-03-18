@@ -1,5 +1,10 @@
 import { useEffect, useState } from "react";
-import { filterOccurrences, getOccurrenceMedia, getOccurrences, uploadOccurrenceImage } from "./services/api";
+import {
+  filterOccurrences,
+  getOccurrenceMedia,
+  getOccurrences,
+  uploadOccurrenceImage,
+} from "./services/api";
 import OccurrenceCard from "./components/OccurrenceCard";
 import FilterBar from "./components/FilterBar";
 import UploadForm from "./components/UploadForm";
@@ -18,83 +23,123 @@ function App() {
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
 
-  // Função para garantir que a URL da imagem use o IP da rede e não localhost
+  const getApiBaseUrl = () => {
+    const envBase = import.meta.env.VITE_API_BASE_URL;
+    if (envBase && typeof envBase === "string" && envBase.trim()) {
+      return envBase.replace(/\/$/, "");
+    }
+
+    const protocol = window.location.protocol;
+    const hostname = window.location.hostname;
+    return `${protocol}//${hostname}:8000`;
+  };
+
   const formatMediaUrl = (url) => {
     if (!url) return null;
-    return url.replace('localhost', '192.168.11.89').replace('127.0.0.1', '192.168.11.89');
+
+    const apiBase = getApiBaseUrl();
+
+    // Se vier URL relativa do backend, transforma em absoluta
+    if (url.startsWith("/")) {
+      return `${apiBase}${url}`;
+    }
+
+    // Se vier absoluta com localhost/127.0.0.1, troca para o host atual
+    try {
+      const parsed = new URL(url);
+      const currentHostname = window.location.hostname;
+
+      if (parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1") {
+        parsed.protocol = window.location.protocol;
+        parsed.hostname = currentHostname;
+        parsed.port = "8000";
+        return parsed.toString();
+      }
+
+      return parsed.toString();
+    } catch {
+      return url;
+    }
   };
 
   const load = async () => {
     setLoading(true);
     setError("");
-    try { 
-      const data = await getOccurrences(20); 
-      setOccurrences(data.items || []); 
-    } 
-    catch (err) { 
-      setError("Erro ao carregar dados do servidor."); 
-    } 
-    finally { 
-      setLoading(false); 
-    }
-  };
 
-  const handleApplyFilters = async (f) => {
-    setLoading(true);
-    try { 
-      const data = await filterOccurrences(f); 
-      setOccurrences(data.items || []); 
-    } 
-    catch { 
-      setError("Erro ao aplicar filtros."); 
-    } 
-    finally { 
-      setLoading(false); 
-    }
-  };
-
-  const handleUpload = async (p) => {
-    try { 
-      setError("");
-      setSuccessMessage("🚀 Processando análise de IA..."); 
-      const res = await uploadOccurrenceImage(p); 
-      
-      if(res.success) { 
-        setSuccessMessage("✅ Ocorrência salva com sucesso!"); 
-        // Limpa a mensagem de sucesso após 4 segundos
-        setTimeout(() => setSuccessMessage(""), 4000);
-        await load(); 
-      }
-    } catch (err) { 
-      setError("Falha no upload. Verifique o servidor."); 
-      setSuccessMessage("");
-    }
-  };
-
-  const handleOpenMedia = async (id) => {
     try {
-      const data = await getOccurrenceMedia(id);
-      if (data.success) {
-        // Aplica a correção de IP nas URLs que vêm do banco
+      const data = await getOccurrences(20);
+      setOccurrences(Array.isArray(data?.items) ? data.items : []);
+    } catch (err) {
+      console.error("Erro ao carregar ocorrências:", err);
+      setError("Erro ao carregar dados do servidor.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleApplyFilters = async (filters) => {
+    setLoading(true);
+    setError("");
+
+    try {
+      const data = await filterOccurrences(filters);
+      setOccurrences(Array.isArray(data?.items) ? data.items : []);
+    } catch (err) {
+      console.error("Erro ao aplicar filtros:", err);
+      setError("Erro ao aplicar filtros.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleUpload = async (payload) => {
+    try {
+      setError("");
+      setSuccessMessage("🚀 Processando análise de IA...");
+
+      const res = await uploadOccurrenceImage(payload);
+
+      if (res?.success) {
+        setSuccessMessage("✅ Ocorrência salva com sucesso!");
+        await load();
+        setTimeout(() => setSuccessMessage(""), 4000);
+      } else {
+        setSuccessMessage("");
+        setError(res?.message || "Falha no upload.");
+      }
+    } catch (err) {
+      console.error("Erro no upload:", err);
+      setSuccessMessage("");
+      setError("Falha no upload. Verifique o servidor.");
+    }
+  };
+
+  const handleOpenMedia = async (occurrenceId) => {
+    try {
+      const data = await getOccurrenceMedia(occurrenceId);
+
+      if (data?.success) {
         const formattedData = {
           ...data,
           original_image_url: formatMediaUrl(data.original_image_url),
-          annotated_image_url: formatMediaUrl(data.annotated_image_url)
+          annotated_image_url: formatMediaUrl(data.annotated_image_url),
         };
         setSelectedMedia(formattedData);
       } else {
         alert("As imagens desta ocorrência ainda não foram processadas.");
       }
     } catch (err) {
+      console.error("Erro ao buscar mídias:", err);
       alert("Erro de conexão ao buscar mídias.");
     }
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+  }, []);
 
   return (
     <div className="app-shell">
-      {/* Alertas Flutuantes de Feedback */}
       {successMessage && <div className="toast success-toast">{successMessage}</div>}
       {error && <div className="toast error-toast">{error}</div>}
 
@@ -102,12 +147,29 @@ function App() {
         <div>
           <p className="hero-kicker">Consórcio Recife Ambiental</p>
           <h1>Waste Intelligence Dashboard</h1>
-          <p className="hero-subtitle">Gestão inteligente de resíduos com Visão Computacional.</p>
+          <p className="hero-subtitle">
+            Gestão inteligente de resíduos com Visão Computacional.
+          </p>
         </div>
+
         <div className="hero-actions">
-          <button className="hero-button" onClick={load}>Atualizar</button>
-          <button className="hero-button hero-button-secondary" onClick={() => exportOccurrencesToCsv(occurrences)}>Exportar CSV</button>
-          <button className="hero-button hero-button-pdf" onClick={() => exportExecutivePdf(occurrences)}>Gerar PDF</button>
+          <button className="hero-button" onClick={load} disabled={loading}>
+            {loading ? "Carregando..." : "Atualizar"}
+          </button>
+
+          <button
+            className="hero-button hero-button-secondary"
+            onClick={() => exportOccurrencesToCsv(occurrences)}
+          >
+            Exportar CSV
+          </button>
+
+          <button
+            className="hero-button hero-button-pdf"
+            onClick={() => exportExecutivePdf(occurrences)}
+          >
+            Gerar PDF
+          </button>
         </div>
       </div>
 
@@ -121,10 +183,13 @@ function App() {
       </div>
 
       <section className="grid">
-        {occurrences.map((o) => (
-          <div key={o.occurrence_id} className="card-container">
-            <OccurrenceCard occurrence={o} />
-            <button className="media-button" onClick={() => handleOpenMedia(o.occurrence_id)}>
+        {occurrences.map((occurrence) => (
+          <div key={occurrence.occurrence_id} className="card-container">
+            <OccurrenceCard occurrence={occurrence} />
+            <button
+              className="media-button"
+              onClick={() => handleOpenMedia(occurrence.occurrence_id)}
+            >
               🔎 Ver Evidências
             </button>
           </div>
@@ -133,15 +198,16 @@ function App() {
 
       <OccurrenceTable occurrences={occurrences} onOpenMedia={handleOpenMedia} />
 
-      {/* Painel de Evidências (Modal) */}
       {selectedMedia && (
         <div className="modal-overlay" onClick={() => setSelectedMedia(null)}>
           <section className="media-panel" onClick={(e) => e.stopPropagation()}>
             <div className="media-header">
               <h2>Análise de Evidências: {selectedMedia.occurrence_id}</h2>
-              <button className="close-button" onClick={() => setSelectedMedia(null)}>FECHAR (X)</button>
+              <button className="close-button" onClick={() => setSelectedMedia(null)}>
+                FECHAR (X)
+              </button>
             </div>
-            
+
             <div className="media-grid">
               <div className="media-box">
                 <p className="media-title">📸 Imagem Original</p>

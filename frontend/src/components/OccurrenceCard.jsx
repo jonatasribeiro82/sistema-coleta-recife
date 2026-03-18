@@ -1,62 +1,136 @@
-import React from 'react';
+import React from "react";
 
 function getBadgeClass(type, value) {
   const normalized = String(value || "").toLowerCase();
+
   if (type === "status") {
     if (normalized === "detectada") return "badge badge-danger";
     if (normalized === "sem_detecção") return "badge badge-neutral";
     if (normalized === "recebida") return "badge badge-info";
+    if (normalized === "erro_processamento") return "badge badge-warning";
   }
+
   if (type === "priority") {
     if (normalized === "crítica") return "badge badge-danger";
     if (normalized === "alta") return "badge badge-warning";
     if (normalized === "média") return "badge badge-info";
     if (normalized === "baixa") return "badge badge-success";
+    if (normalized === "monitoramento") return "badge badge-neutral";
+    if (normalized === "pendente_análise") return "badge badge-warning";
   }
+
   return "badge badge-neutral";
 }
 
 function OccurrenceCard({ occurrence }) {
-  // Varredura completa para GPS e Endereço
-  const lat = occurrence.latitude || occurrence.location_analysis?.latitude;
-  const lon = occurrence.longitude || occurrence.location_analysis?.longitude;
-  const address = occurrence.address || occurrence.location_analysis?.address || "N/A";
+  const lat =
+    occurrence.latitude ??
+    occurrence.location_analysis?.latitude ??
+    null;
 
-  // O TRADUTOR BLINDADO 🚀 (Acha a imagem em qualquer variável)
+  const lon =
+    occurrence.longitude ??
+    occurrence.location_analysis?.longitude ??
+    null;
+
+  const address =
+    occurrence.address ||
+    occurrence.location_analysis?.address ||
+    "Não informado";
+
+  const getApiBaseUrl = () => {
+    const envBase = import.meta.env.VITE_API_BASE_URL;
+    if (envBase && typeof envBase === "string" && envBase.trim()) {
+      return envBase.replace(/\/$/, "");
+    }
+
+    const protocol = window.location.protocol;
+    const hostname = window.location.hostname;
+    return `${protocol}//${hostname}:8000`;
+  };
+
+  const formatMediaUrl = (url) => {
+    if (!url) return null;
+
+    const apiBase = getApiBaseUrl();
+
+    if (url.startsWith("/")) {
+      return `${apiBase}${url}`;
+    }
+
+    try {
+      const parsed = new URL(url);
+      const currentHostname = window.location.hostname;
+
+      if (parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1") {
+        parsed.protocol = window.location.protocol;
+        parsed.hostname = currentHostname;
+        parsed.port = "8000";
+        return parsed.toString();
+      }
+
+      return parsed.toString();
+    } catch {
+      return url;
+    }
+  };
+
   const getImageUrl = () => {
-    const backendUrl = "http://192.168.11.89:8000";
-    
-    // Procura a IA em todos os lugares possíveis do seu banco
-    const annotated = occurrence.annotated_image_path || occurrence.annotated_image_url || occurrence.vision_analysis?.annotated_image_path;
-    
-    // Procura a foto original em todos os lugares possíveis
-    const raw = occurrence.image_path || occurrence.raw_image_path || occurrence.raw_image_url;
+    // prioridade: imagem anotada pública
+    if (occurrence.annotated_image_url) {
+      return formatMediaUrl(occurrence.annotated_image_url);
+    }
 
-    // Se achou a IA, monta o link perfeito
-    if (annotated) {
-      const filename = String(annotated).split(/[\/\\]/).pop(); 
-      return `${backendUrl}/media/annotated/${filename}`;
+    // depois: imagem original pública
+    if (occurrence.original_image_url) {
+      return formatMediaUrl(occurrence.original_image_url);
     }
-    // Se achou a original, monta o link perfeito
-    if (raw) {
-      const filename = String(raw).split(/[\/\\]/).pop();
-      return `${backendUrl}/media/raw/${filename}`;
+
+    // fallback: annotated_image_path
+    if (occurrence.annotated_image_path) {
+      const filename = String(occurrence.annotated_image_path).split(/[\\/]/).pop();
+      return formatMediaUrl(`/media/annotated/${filename}`);
     }
+
+    // fallback: image_path
+    if (occurrence.image_path) {
+      const filename = String(occurrence.image_path).split(/[\\/]/).pop();
+      return formatMediaUrl(`/media/raw/${filename}`);
+    }
+
+    // fallback: visão aninhada
+    if (occurrence.vision_analysis?.annotated_image_path) {
+      const filename = String(occurrence.vision_analysis.annotated_image_path).split(/[\\/]/).pop();
+      return formatMediaUrl(`/media/annotated/${filename}`);
+    }
+
     return null;
   };
 
   const imageUrl = getImageUrl();
-  
-  // Confere se a IA rodou para mostrar a etiqueta verde
-  const hasAnalysis = !!(occurrence.annotated_image_path || occurrence.annotated_image_url || occurrence.vision_analysis?.annotated_image_path);
+
+  const hasAnalysis = Boolean(
+    occurrence.annotated_image_url ||
+      occurrence.annotated_image_path ||
+      occurrence.vision_analysis?.annotated_image_path
+  );
+
+  const totalDetections =
+    occurrence.total_detections ??
+    occurrence.vision_analysis?.summary?.total_detections ??
+    occurrence.vision_analysis?.total_detections ??
+    0;
 
   return (
     <div className="occurrence-card executive-card">
       <div className="occurrence-top">
         <div>
           <p className="occurrence-label">Ocorrência</p>
-          <h3 style={{ fontSize: '1.1rem', wordBreak: 'break-all' }}>{occurrence.occurrence_id}</h3>
+          <h3 style={{ fontSize: "1.1rem", wordBreak: "break-all" }}>
+            {occurrence.occurrence_id}
+          </h3>
         </div>
+
         <div className="occurrence-badges">
           <span className={getBadgeClass("status", occurrence.status)}>
             {occurrence.status || "N/A"}
@@ -67,16 +141,37 @@ function OccurrenceCard({ occurrence }) {
         </div>
       </div>
 
-      <div className="occurrence-image-container" style={{ width: '100%', height: '180px', backgroundColor: '#e2e8f0', borderRadius: '8px', overflow: 'hidden', marginBottom: '15px' }}>
+      <div
+        className="occurrence-image-container"
+        style={{
+          width: "100%",
+          height: "180px",
+          backgroundColor: "#e2e8f0",
+          borderRadius: "8px",
+          overflow: "hidden",
+          marginBottom: "15px",
+        }}
+      >
         {imageUrl ? (
-          <img 
-            src={imageUrl} 
-            alt="Ocorrência" 
-            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-            onError={(e) => { e.target.onerror = null; e.target.style.display = 'none'; }}
+          <img
+            src={imageUrl}
+            alt="Ocorrência"
+            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+            onError={(e) => {
+              e.currentTarget.onerror = null;
+              e.currentTarget.style.display = "none";
+            }}
           />
         ) : (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#64748b' }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              height: "100%",
+              color: "#64748b",
+            }}
+          >
             <span>Sem imagem</span>
           </div>
         )}
@@ -91,7 +186,9 @@ function OccurrenceCard({ occurrence }) {
         <div className="detail-item full-width">
           <span className="detail-label">🌍 GPS</span>
           <span className="detail-value">
-            {lat && lon ? `${Number(lat).toFixed(6)}, ${Number(lon).toFixed(6)}` : "Não disponível"}
+            {lat != null && lon != null
+              ? `${Number(lat).toFixed(6)}, ${Number(lon).toFixed(6)}`
+              : "Não disponível"}
           </span>
         </div>
 
@@ -99,10 +196,10 @@ function OccurrenceCard({ occurrence }) {
           <span className="detail-label">Câmera</span>
           <span className="detail-value">{occurrence.camera_id || "N/A"}</span>
         </div>
-        
+
         <div className="detail-item">
           <span className="detail-label">Detecções</span>
-          <span className="detail-value">{occurrence.total_detections ?? occurrence.vision_analysis?.total_detections ?? 0}</span>
+          <span className="detail-value">{totalDetections}</span>
         </div>
       </div>
 
