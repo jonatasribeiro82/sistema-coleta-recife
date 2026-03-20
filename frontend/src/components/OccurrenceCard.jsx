@@ -19,6 +19,15 @@ function getBadgeClass(type, value) {
     if (normalized === "pendente_análise") return "badge badge-warning";
   }
 
+  if (type === "operational") {
+    if (normalized === "entulho") return "badge badge-danger";
+    if (normalized === "volumoso") return "badge badge-warning";
+    if (normalized === "reciclável") return "badge badge-success";
+    if (normalized === "orgânico/poda") return "badge badge-info";
+    if (normalized === "eletrônico") return "badge badge-warning";
+    if (normalized === "domiciliar") return "badge badge-neutral";
+  }
+
   return "badge badge-neutral";
 }
 
@@ -37,6 +46,11 @@ function OccurrenceCard({ occurrence }) {
     occurrence.address ||
     occurrence.location_analysis?.address ||
     "Não informado";
+
+  const operationalCategory =
+    occurrence.dominant_operational_category ||
+    occurrence.vision_analysis?.summary?.waste_estimation?.dominant_operational_category ||
+    "Não classificado";
 
   const getApiBaseUrl = () => {
     const envBase = import.meta.env.VITE_API_BASE_URL;
@@ -76,29 +90,24 @@ function OccurrenceCard({ occurrence }) {
   };
 
   const getImageUrl = () => {
-    // prioridade: imagem anotada pública
     if (occurrence.annotated_image_url) {
       return formatMediaUrl(occurrence.annotated_image_url);
     }
 
-    // depois: imagem original pública
     if (occurrence.original_image_url) {
       return formatMediaUrl(occurrence.original_image_url);
     }
 
-    // fallback: annotated_image_path
     if (occurrence.annotated_image_path) {
       const filename = String(occurrence.annotated_image_path).split(/[\\/]/).pop();
       return formatMediaUrl(`/media/annotated/${filename}`);
     }
 
-    // fallback: image_path
     if (occurrence.image_path) {
       const filename = String(occurrence.image_path).split(/[\\/]/).pop();
       return formatMediaUrl(`/media/raw/${filename}`);
     }
 
-    // fallback: visão aninhada
     if (occurrence.vision_analysis?.annotated_image_path) {
       const filename = String(occurrence.vision_analysis.annotated_image_path).split(/[\\/]/).pop();
       return formatMediaUrl(`/media/annotated/${filename}`);
@@ -189,6 +198,13 @@ function OccurrenceCard({ occurrence }) {
             {lat != null && lon != null
               ? `${Number(lat).toFixed(6)}, ${Number(lon).toFixed(6)}`
               : "Não disponível"}
+          </span>
+        </div>
+
+        <div className="detail-item full-width">
+          <span className="detail-label">♻️ Categoria operacional</span>
+          <span className={getBadgeClass("operational", operationalCategory)}>
+            {operationalCategory}
           </span>
         </div>
 

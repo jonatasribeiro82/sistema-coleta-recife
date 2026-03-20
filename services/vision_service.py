@@ -6,7 +6,10 @@ from typing import Any, Dict, List
 import cv2
 from ultralytics import YOLO
 
-from core.waste_mapping import map_yolo_class_to_waste_category
+from core.waste_mapping import (
+    map_base_to_operational_category,
+    map_yolo_class_to_waste_category,
+)
 
 
 class VisionService:
@@ -29,10 +32,6 @@ class VisionService:
         self._load_model()
 
     def _load_model(self) -> None:
-        """
-        Carrega o modelo de forma segura.
-        Se falhar, o serviço continua vivo e retorna erro controlado depois.
-        """
         try:
             self.model = YOLO(self.model_path)
         except Exception:
@@ -63,6 +62,7 @@ class VisionService:
             "orgânico": (0, 128, 0),
             "eletrônico": (128, 0, 128),
             "entulho": (42, 42, 165),
+            "volumoso": (0, 140, 255),
             "descarte misto": (0, 0, 255),
             "veículo/coleta": (255, 255, 0),
             "veículo": (255, 255, 255),
@@ -79,7 +79,8 @@ class VisionService:
         image_area = float(image_width * image_height)
 
         waste_detections = [
-            det for det in detections
+            det
+            for det in detections
             if det["waste_category"] not in {"não resíduo", "veículo", "veículo/coleta"}
         ]
 
@@ -95,6 +96,25 @@ class VisionService:
         else:
             severity, estimated_volume_label = "crítico", "muito_grande"
 
+        operational_detections = [
+            det
+            for det in waste_detections
+            if det.get("operational_category") not in {"não resíduo", "veículo/coleta"}
+        ]
+
+        operational_categories = [
+            det.get("operational_category")
+            for det in operational_detections
+            if det.get("operational_category")
+        ]
+
+        dominant_operational_category = None
+        if operational_categories:
+            dominant_operational_category = max(
+                set(operational_categories),
+                key=operational_categories.count,
+            )
+
         return {
             "image_area": image_area,
             "total_detected_area": round(total_detected_area, 2),
@@ -102,13 +122,16 @@ class VisionService:
             "estimated_volume_label": estimated_volume_label,
             "severity": severity,
             "estimated_items_count": len(waste_detections),
+            "dominant_operational_category": dominant_operational_category,
         }
 
     @staticmethod
-    def _summarize_categories(detections: List[Dict[str, Any]]) -> Dict[str, int]:
+    def _summarize_categories(detections: List[Dict[str, Any]], field_name: str) -> Dict[str, int]:
         summary: Dict[str, int] = {}
         for detection in detections:
-            category = detection["waste_category"]
+            category = detection.get(field_name)
+            if not category:
+                continue
             summary[category] = summary.get(category, 0) + 1
         return summary
 
@@ -129,11 +152,12 @@ class VisionService:
             class_name = det["class_name"]
             confidence = det["confidence"]
             waste_category = det["waste_category"]
+            operational_category = det.get("operational_category", "N/A")
 
             color = self._get_box_color(waste_category)
             cv2.rectangle(annotated_image, (x1, y1), (x2, y2), color, 2)
 
-            label = f"{class_name} | {waste_category} | {confidence:.2f}"
+            label = f"{class_name} | {operational_category} | {confidence:.2f}"
             cv2.putText(
                 annotated_image,
                 label,
@@ -161,6 +185,7 @@ class VisionService:
                     "summary": {
                         "total_detections": 0,
                         "waste_category_summary": {},
+                        "operational_category_summary": {},
                         "waste_estimation": {
                             "image_area": 0,
                             "total_detected_area": 0,
@@ -168,6 +193,7 @@ class VisionService:
                             "estimated_volume_label": "desconhecido",
                             "severity": "desconhecido",
                             "estimated_items_count": 0,
+                            "dominant_operational_category": None,
                         },
                     },
                     "annotated_image_path": None,
@@ -184,6 +210,7 @@ class VisionService:
                     "summary": {
                         "total_detections": 0,
                         "waste_category_summary": {},
+                        "operational_category_summary": {},
                         "waste_estimation": {
                             "image_area": 0,
                             "total_detected_area": 0,
@@ -191,6 +218,7 @@ class VisionService:
                             "estimated_volume_label": "desconhecido",
                             "severity": "desconhecido",
                             "estimated_items_count": 0,
+                            "dominant_operational_category": None,
                         },
                     },
                     "annotated_image_path": None,
@@ -214,6 +242,7 @@ class VisionService:
                     "summary": {
                         "total_detections": 0,
                         "waste_category_summary": {},
+                        "operational_category_summary": {},
                         "waste_estimation": self._estimate_waste_volume([], image_width, image_height),
                     },
                     "annotated_image_path": None,
@@ -232,6 +261,7 @@ class VisionService:
                     x1, y1, x2, y2 = [float(v) for v in xyxy]
                     class_name = names.get(cls_id, f"class_{cls_id}")
                     waste_category = map_yolo_class_to_waste_category(class_name)
+                    operational_category = map_base_to_operational_category(waste_category)
                     area = self._calculate_box_area(x1, y1, x2, y2)
 
                     detections.append({
@@ -239,6 +269,7 @@ class VisionService:
                         "class_id": cls_id,
                         "class_name": class_name,
                         "waste_category": waste_category,
+                        "operational_category": operational_category,
                         "confidence": round(confidence, 4),
                         "bbox": {
                             "x1": round(x1, 2),
@@ -254,7 +285,8 @@ class VisionService:
                     })
 
             waste_estimation = self._estimate_waste_volume(detections, image_width, image_height)
-            category_summary = self._summarize_categories(detections)
+            waste_category_summary = self._summarize_categories(detections, "waste_category")
+            operational_category_summary = self._summarize_categories(detections, "operational_category")
 
             output_image_path = self.output_dir / f"{image_file.stem}_annotated.jpg"
             saved_image_path = self._draw_detections(image, detections, output_image_path)
@@ -265,7 +297,8 @@ class VisionService:
                 "detections": detections,
                 "summary": {
                     "total_detections": len(detections),
-                    "waste_category_summary": category_summary,
+                    "waste_category_summary": waste_category_summary,
+                    "operational_category_summary": operational_category_summary,
                     "waste_estimation": waste_estimation,
                 },
                 "annotated_image_path": saved_image_path,
@@ -279,6 +312,7 @@ class VisionService:
                 "summary": {
                     "total_detections": 0,
                     "waste_category_summary": {},
+                    "operational_category_summary": {},
                     "waste_estimation": {
                         "image_area": 0,
                         "total_detected_area": 0,
@@ -286,6 +320,7 @@ class VisionService:
                         "estimated_volume_label": "desconhecido",
                         "severity": "desconhecido",
                         "estimated_items_count": 0,
+                        "dominant_operational_category": None,
                     },
                 },
                 "annotated_image_path": None,

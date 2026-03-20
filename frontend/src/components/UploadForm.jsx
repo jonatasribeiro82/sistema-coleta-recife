@@ -7,6 +7,7 @@ function UploadForm({ onUpload }) {
   const [cameraId, setCameraId] = useState("");
   const [lat, setLat] = useState(null);
   const [lon, setLon] = useState(null);
+  const [accuracy, setAccuracy] = useState(null);
   const [loadingGps, setLoadingGps] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [gpsStatus, setGpsStatus] = useState("não capturado");
@@ -14,6 +15,66 @@ function UploadForm({ onUpload }) {
   const formatCoord = (value) => {
     if (value === null || value === undefined) return "-";
     return Number(value).toFixed(6);
+  };
+
+  const formatAccuracy = (value) => {
+    if (value === null || value === undefined) return "-";
+    return `${Math.round(Number(value))} m`;
+  };
+
+  const getAccuracyLabel = (value) => {
+    if (value === null || value === undefined) return "desconhecida";
+    if (value <= 20) return "alta";
+    if (value <= 80) return "média";
+    return "baixa";
+  };
+
+  const getResolvedGpsStatus = () => {
+    if (loadingGps) return "capturando";
+    if (gpsStatus === "falhou") return "falhou";
+    if (gpsStatus === "indisponível") return "indisponível";
+
+    const hasCoords = lat !== null && lon !== null;
+
+    if (!hasCoords) return "não capturado";
+
+    if (accuracy === null || accuracy === undefined) return "capturado";
+    if (accuracy <= 80) return "capturado";
+    return "capturado com baixa precisão";
+  };
+
+  const resolvedGpsStatus = getResolvedGpsStatus();
+
+  const getGpsBoxStyle = () => {
+    if (resolvedGpsStatus === "capturado") {
+      return {
+        background: "#ecfdf5",
+        border: "1px solid #86efac",
+        color: "#166534",
+      };
+    }
+
+    if (resolvedGpsStatus === "capturado com baixa precisão") {
+      return {
+        background: "#fefce8",
+        border: "1px solid #fde68a",
+        color: "#92400e",
+      };
+    }
+
+    if (resolvedGpsStatus === "falhou" || resolvedGpsStatus === "indisponível") {
+      return {
+        background: "#fef2f2",
+        border: "1px solid #fecaca",
+        color: "#991b1b",
+      };
+    }
+
+    return {
+      background: "#f8fafc",
+      border: "1px solid #e2e8f0",
+      color: "#334155",
+    };
   };
 
   const handleFileChange = (event) => {
@@ -48,18 +109,37 @@ function UploadForm({ onUpload }) {
 
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        setLat(pos.coords.latitude);
-        setLon(pos.coords.longitude);
+        const nextLat = pos.coords.latitude;
+        const nextLon = pos.coords.longitude;
+        const nextAccuracy = pos.coords.accuracy ?? null;
+
+        setLat(nextLat);
+        setLon(nextLon);
+        setAccuracy(nextAccuracy);
         setLoadingGps(false);
-        setGpsStatus("capturado");
-        alert("📍 Localização capturada com sucesso!");
+
+        if (nextAccuracy !== null && nextAccuracy > 80) {
+          setGpsStatus("capturado com baixa precisão");
+          alert(
+            `📍 Localização capturada, mas com precisão baixa (${Math.round(
+              nextAccuracy
+            )} m). Se puder, aguarde alguns segundos e capture novamente.`
+          );
+        } else {
+          setGpsStatus("capturado");
+          alert("📍 Localização capturada com sucesso!");
+        }
       },
       (err) => {
         alert("❌ Erro ao pegar GPS: " + err.message);
         setLoadingGps(false);
         setGpsStatus("falhou");
       },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      {
+        enableHighAccuracy: true,
+        timeout: 12000,
+        maximumAge: 0,
+      }
     );
   };
 
@@ -68,6 +148,7 @@ function UploadForm({ onUpload }) {
     setCameraId("");
     setLat(null);
     setLon(null);
+    setAccuracy(null);
     setGpsStatus("não capturado");
 
     if (fileInputRef.current) {
@@ -91,6 +172,7 @@ function UploadForm({ onUpload }) {
         camera_id: cameraId?.trim() || "WEB-MANUAL",
         latitude: lat,
         longitude: lon,
+        accuracy,
       });
 
       alert("✅ Ocorrência registrada e analisada pela IA!");
@@ -166,7 +248,12 @@ function UploadForm({ onUpload }) {
             disabled={loadingGps}
             style={{
               width: "100%",
-              background: lat ? "#10b981" : "#64748b",
+              background:
+                resolvedGpsStatus === "capturado"
+                  ? "#10b981"
+                  : resolvedGpsStatus === "capturado com baixa precisão"
+                  ? "#f59e0b"
+                  : "#64748b",
               color: "white",
               border: "none",
               padding: "10px",
@@ -177,8 +264,10 @@ function UploadForm({ onUpload }) {
           >
             {loadingGps
               ? "⌛ Buscando Satélite..."
-              : lat
+              : resolvedGpsStatus === "capturado"
               ? "📍 GPS Vinculado"
+              : resolvedGpsStatus === "capturado com baixa precisão"
+              ? "⚠️ GPS com baixa precisão"
               : "Capturar Minha Localização"}
           </button>
         </div>
@@ -187,15 +276,13 @@ function UploadForm({ onUpload }) {
           style={{
             fontSize: "0.85rem",
             marginBottom: "15px",
-            color: "#334155",
-            background: "#f8fafc",
             padding: "10px",
             borderRadius: "6px",
-            border: "1px solid #e2e8f0",
+            ...getGpsBoxStyle(),
           }}
         >
           <div>
-            <strong>Status GPS:</strong> {gpsStatus}
+            <strong>Status GPS:</strong> {resolvedGpsStatus}
           </div>
           <div>
             <strong>Latitude:</strong> {formatCoord(lat)}
@@ -203,6 +290,18 @@ function UploadForm({ onUpload }) {
           <div>
             <strong>Longitude:</strong> {formatCoord(lon)}
           </div>
+          <div>
+            <strong>Precisão estimada:</strong> {formatAccuracy(accuracy)}
+          </div>
+          <div>
+            <strong>Qualidade:</strong> {getAccuracyLabel(accuracy)}
+          </div>
+
+          {resolvedGpsStatus === "capturado com baixa precisão" && (
+            <div style={{ marginTop: "8px", fontWeight: 600 }}>
+              Recomendação: capture novamente antes de salvar.
+            </div>
+          )}
         </div>
 
         <button

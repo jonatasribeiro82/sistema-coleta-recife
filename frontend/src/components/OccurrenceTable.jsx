@@ -69,6 +69,7 @@ function OccurrenceTable({ occurrences, onOpenMedia }) {
         item.reported_by,
         item.address,
         item.estimated_volume_label,
+        item.dominant_operational_category,
         item.latitude,
         item.longitude,
       ]
@@ -97,7 +98,7 @@ function OccurrenceTable({ occurrences, onOpenMedia }) {
         <input
           type="text"
           className="table-search"
-          placeholder="Buscar por ID, câmera, status, prioridade, endereço, GPS..."
+          placeholder="Buscar por ID, câmera, status, prioridade, categoria, endereço, GPS..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
         />
@@ -150,6 +151,14 @@ function OccurrenceTable({ occurrences, onOpenMedia }) {
                 </th>
                 <th>
                   <SortButton
+                    label="Categoria"
+                    column="dominant_operational_category"
+                    sortConfig={sortConfig}
+                    onSort={handleSort}
+                  />
+                </th>
+                <th>
+                  <SortButton
                     label="Câmera"
                     column="camera_id"
                     sortConfig={sortConfig}
@@ -180,7 +189,7 @@ function OccurrenceTable({ occurrences, onOpenMedia }) {
             <tbody>
               {filteredAndSortedData.length === 0 ? (
                 <tr>
-                  <td colSpan="10" className="table-empty">
+                  <td colSpan="11" className="table-empty">
                     Nenhuma ocorrência encontrada.
                   </td>
                 </tr>
@@ -205,6 +214,9 @@ function OccurrenceTable({ occurrences, onOpenMedia }) {
                         ).toFixed(6)}`
                       : "GPS não disponível";
 
+                  const operationalCategory =
+                    occurrence.dominant_operational_category || "Não classificado";
+
                   return (
                     <tr key={occurrence.occurrence_id}>
                       <td>{occurrence.occurrence_id}</td>
@@ -212,6 +224,7 @@ function OccurrenceTable({ occurrences, onOpenMedia }) {
                       <td>{occurrence.status || "N/A"}</td>
                       <td>{occurrence.priority || "N/A"}</td>
                       <td>{occurrence.severity || "N/A"}</td>
+                      <td>{operationalCategory}</td>
                       <td>{occurrence.camera_id || "N/A"}</td>
                       <td>{totalDetections}</td>
                       <td>{occurrence.estimated_volume_label || "N/A"}</td>

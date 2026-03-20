@@ -36,9 +36,13 @@ class OccurrenceListItem(BaseModel):
     estimated_volume_label: Optional[str] = None
     severity: Optional[str] = None
     estimated_items_count: Optional[int] = None
+
+    # Campo novo da camada operacional
+    dominant_operational_category: Optional[str] = None
+
     annotated_image_path: Optional[str] = None
 
-    # Campos novos para o frontend consumir direto
+    # URLs prontas para o frontend
     original_image_url: Optional[str] = None
     annotated_image_url: Optional[str] = None
 

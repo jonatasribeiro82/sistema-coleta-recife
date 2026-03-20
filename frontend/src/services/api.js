@@ -52,6 +52,7 @@ export const uploadOccurrenceImage = async ({
   camera_id = "",
   latitude = null,
   longitude = null,
+  accuracy = null,
   source_type = "manual_upload",
   reported_by = "frontend_dashboard",
   run_detection = true,
@@ -61,13 +62,16 @@ export const uploadOccurrenceImage = async ({
 
   if (camera_id) formData.append("camera_id", camera_id);
 
-  // Envia coordenadas mesmo se forem 0
   if (latitude !== null && latitude !== undefined) {
     formData.append("latitude", String(latitude));
   }
 
   if (longitude !== null && longitude !== undefined) {
     formData.append("longitude", String(longitude));
+  }
+
+  if (accuracy !== null && accuracy !== undefined) {
+    formData.append("accuracy", String(accuracy));
   }
 
   formData.append("source_type", source_type);

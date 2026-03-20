@@ -20,6 +20,7 @@ class DatabaseService:
     def _initialize_database(self) -> None:
         with self._get_connection() as conn:
             cursor = conn.cursor()
+
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS occurrences (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -38,12 +39,35 @@ class DatabaseService:
                     estimated_volume_label TEXT,
                     severity TEXT,
                     estimated_items_count INTEGER,
+                    dominant_operational_category TEXT,
                     annotated_image_path TEXT,
                     payload_json TEXT NOT NULL
                 )
             """)
-            for field in ["occurrence_id", "created_at", "status", "priority", "camera_id"]:
-                cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_occurrences_{field} ON occurrences ({field})")
+
+            cursor.execute("PRAGMA table_info(occurrences)")
+            existing_cols = {row[1] for row in cursor.fetchall()}
+
+            columns_to_add = {
+                "dominant_operational_category": "TEXT",
+            }
+
+            for col_name, col_type in columns_to_add.items():
+                if col_name not in existing_cols:
+                    cursor.execute(f"ALTER TABLE occurrences ADD COLUMN {col_name} {col_type}")
+
+            for field in [
+                "occurrence_id",
+                "created_at",
+                "status",
+                "priority",
+                "camera_id",
+                "dominant_operational_category",
+            ]:
+                cursor.execute(
+                    f"CREATE INDEX IF NOT EXISTS idx_occurrences_{field} ON occurrences ({field})"
+                )
+
             conn.commit()
 
     @staticmethod
@@ -60,20 +84,18 @@ class DatabaseService:
         vision = occurrence_payload.get("vision_analysis") or {}
         summary = vision.get("summary") or {}
         waste = summary.get("waste_estimation") or {}
+
         return {
             "total_detections": summary.get("total_detections"),
             "estimated_volume_label": waste.get("estimated_volume_label"),
             "severity": waste.get("severity"),
             "estimated_items_count": waste.get("estimated_items_count"),
+            "dominant_operational_category": waste.get("dominant_operational_category"),
             "annotated_image_path": vision.get("annotated_image_path"),
         }
 
     @staticmethod
     def _build_public_media_urls(row_dict: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Acrescenta URLs públicas derivadas dos paths salvos no banco,
-        sem remover os campos originais.
-        """
         image_path = row_dict.get("image_path")
         annotated_path = row_dict.get("annotated_image_path")
 
@@ -109,6 +131,7 @@ class DatabaseService:
             "estimated_volume_label": vis.get("estimated_volume_label"),
             "severity": vis.get("severity"),
             "estimated_items_count": vis.get("estimated_items_count"),
+            "dominant_operational_category": vis.get("dominant_operational_category"),
             "annotated_image_path": vis.get("annotated_image_path"),
             "payload_json": json.dumps(occurrence_payload, ensure_ascii=False),
         }
@@ -117,15 +140,43 @@ class DatabaseService:
             with self._get_connection() as conn:
                 conn.cursor().execute("""
                     INSERT INTO occurrences (
-                        occurrence_id, created_at, source_type, image_path, camera_id, reported_by,
-                        status, priority, latitude, longitude, address, total_detections,
-                        estimated_volume_label, severity, estimated_items_count,
-                        annotated_image_path, payload_json
+                        occurrence_id,
+                        created_at,
+                        source_type,
+                        image_path,
+                        camera_id,
+                        reported_by,
+                        status,
+                        priority,
+                        latitude,
+                        longitude,
+                        address,
+                        total_detections,
+                        estimated_volume_label,
+                        severity,
+                        estimated_items_count,
+                        dominant_operational_category,
+                        annotated_image_path,
+                        payload_json
                     ) VALUES (
-                        :occurrence_id, :created_at, :source_type, :image_path, :camera_id, :reported_by,
-                        :status, :priority, :latitude, :longitude, :address, :total_detections,
-                        :estimated_volume_label, :severity, :estimated_items_count,
-                        :annotated_image_path, :payload_json
+                        :occurrence_id,
+                        :created_at,
+                        :source_type,
+                        :image_path,
+                        :camera_id,
+                        :reported_by,
+                        :status,
+                        :priority,
+                        :latitude,
+                        :longitude,
+                        :address,
+                        :total_detections,
+                        :estimated_volume_label,
+                        :severity,
+                        :estimated_items_count,
+                        :dominant_operational_category,
+                        :annotated_image_path,
+                        :payload_json
                     )
                 """, row_data)
                 conn.commit()
@@ -162,6 +213,7 @@ class DatabaseService:
                         estimated_volume_label,
                         severity,
                         estimated_items_count,
+                        dominant_operational_category,
                         annotated_image_path
                     FROM occurrences
                     ORDER BY created_at DESC
@@ -212,6 +264,7 @@ class DatabaseService:
                     estimated_volume_label,
                     severity,
                     estimated_items_count,
+                    dominant_operational_category,
                     annotated_image_path
                 FROM occurrences
                 WHERE 1=1
@@ -274,7 +327,10 @@ class DatabaseService:
         try:
             with self._get_connection() as conn:
                 cursor = conn.cursor()
-                cursor.execute("SELECT * FROM occurrences WHERE occurrence_id = ? LIMIT 1", (occurrence_id,))
+                cursor.execute(
+                    "SELECT * FROM occurrences WHERE occurrence_id = ? LIMIT 1",
+                    (occurrence_id,),
+                )
                 row = cursor.fetchone()
 
             if not row:

@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 from pathlib import Path
+from math import radians, sin, cos, sqrt, atan2
 
 from fastapi import FastAPI, File, Form, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-# Imports dos seus serviços
 from core.api_config import (
     ALLOWED_HEADERS,
     ALLOWED_METHODS,
@@ -37,7 +37,6 @@ app.add_middleware(
     allow_headers=ALLOWED_HEADERS,
 )
 
-# Inicialização dos serviços
 database_service = DatabaseService()
 occurrence_service = OccurrenceService()
 gps_extractor = GPSExtractor()
@@ -62,6 +61,125 @@ def build_media_url(request: Request, file_path: str | None, media_type: str) ->
     return f"{base_url}/media/{'raw' if media_type == 'raw' else 'annotated'}/{file_name}"
 
 
+def haversine_meters(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    earth_radius_m = 6371000.0
+
+    dlat = radians(lat2 - lat1)
+    dlon = radians(lon2 - lon1)
+
+    a = (
+        sin(dlat / 2) ** 2
+        + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlon / 2) ** 2
+    )
+    c = 2 * atan2(sqrt(a), sqrt(1 - a))
+    return earth_radius_m * c
+
+
+def classify_location_confidence(accuracy: float | None, conflict: bool) -> str:
+    if conflict:
+        return "baixa"
+
+    if accuracy is None:
+        return "média"
+
+    if accuracy <= 20:
+        return "alta"
+    if accuracy <= 80:
+        return "média"
+    return "baixa"
+
+
+def build_location_analysis(
+    saved_path: Path,
+    gps_extractor: GPSExtractor,
+    latitude: float | None,
+    longitude: float | None,
+    accuracy: float | None,
+    camera_id: str | None,
+) -> dict:
+    exif_location = gps_extractor.resolve_location(str(saved_path), camera_id)
+
+    exif_lat = exif_location.get("latitude")
+    exif_lon = exif_location.get("longitude")
+    exif_address = exif_location.get("address")
+    exif_city = exif_location.get("city")
+
+    has_device_gps = latitude is not None and longitude is not None
+    has_exif_gps = exif_lat is not None and exif_lon is not None
+
+    if has_device_gps:
+        resolved_address = gps_extractor.get_address_from_coords(latitude, longitude)
+
+        location_analysis = {
+            "latitude": latitude,
+            "longitude": longitude,
+            "address": resolved_address,
+            "city": "Recife/PE",
+            "location_source": "device_gps",
+            "device_latitude": latitude,
+            "device_longitude": longitude,
+            "device_accuracy_m": accuracy,
+            "exif_latitude": exif_lat,
+            "exif_longitude": exif_lon,
+            "exif_address": exif_address,
+            "location_conflict": False,
+            "location_conflict_distance_m": None,
+            "location_confidence": "média",
+        }
+
+        if has_exif_gps:
+            try:
+                distance_m = haversine_meters(latitude, longitude, exif_lat, exif_lon)
+                location_analysis["location_conflict_distance_m"] = round(distance_m, 2)
+
+                if distance_m > 300:
+                    location_analysis["location_conflict"] = True
+            except Exception:
+                pass
+
+        location_analysis["location_confidence"] = classify_location_confidence(
+            accuracy=accuracy,
+            conflict=location_analysis["location_conflict"],
+        )
+
+        return location_analysis
+
+    if has_exif_gps:
+        return {
+            "latitude": exif_lat,
+            "longitude": exif_lon,
+            "address": exif_address,
+            "city": exif_city or "Recife/PE",
+            "location_source": "image_exif",
+            "device_latitude": None,
+            "device_longitude": None,
+            "device_accuracy_m": None,
+            "exif_latitude": exif_lat,
+            "exif_longitude": exif_lon,
+            "exif_address": exif_address,
+            "location_conflict": False,
+            "location_conflict_distance_m": None,
+            "location_confidence": "média",
+        }
+
+    return {
+        "latitude": None,
+        "longitude": None,
+        "address": "Localização não identificada",
+        "city": "Recife/PE",
+        "location_source": "unresolved",
+        "device_latitude": None,
+        "device_longitude": None,
+        "device_accuracy_m": None,
+        "exif_latitude": None,
+        "exif_longitude": None,
+        "exif_address": None,
+        "location_conflict": False,
+        "location_conflict_distance_m": None,
+        "location_confidence": "baixa",
+    }
+
+
 @app.get("/")
 def root():
     return {"message": "API Waste Intelligence Online"}
@@ -75,8 +193,8 @@ def health_check():
         "data": {
             "api": "ok",
             "database": "ok",
-            "cors": "enabled"
-        }
+            "cors": "enabled",
+        },
     }
 
 
@@ -86,7 +204,7 @@ def list_occurrences(limit: int = Query(default=20)):
     return OccurrenceListResponse(
         success=result["success"],
         count=result["count"],
-        items=result["items"]
+        items=result["items"],
     )
 
 
@@ -100,18 +218,20 @@ def get_occurrence_media_route(occurrence_id: str, request: Request):
                 success=True,
                 occurrence_id=occurrence_id,
                 original_image_url=build_media_url(request, occ_data.get("image_path"), "raw"),
-                annotated_image_url=build_media_url(request, occ_data.get("annotated_image_path"), "annotated")
+                annotated_image_url=build_media_url(request, occ_data.get("annotated_image_path"), "annotated"),
             )
+
         return OccurrenceMediaResponse(
             success=False,
             occurrence_id=occurrence_id,
-            error="Não encontrado."
+            error="Não encontrado.",
         )
+
     except Exception as e:
         return OccurrenceMediaResponse(
             success=False,
             occurrence_id=occurrence_id,
-            error=str(e)
+            error=str(e),
         )
 
 
@@ -122,7 +242,8 @@ async def upload_occurrence_image(
     camera_id: str = Form(default=None),
     latitude: float = Form(default=None),
     longitude: float = Form(default=None),
-    run_detection: str = Form(default="true")
+    accuracy: float = Form(default=None),
+    run_detection: str = Form(default="true"),
 ):
     try:
         if not file.filename:
@@ -131,19 +252,15 @@ async def upload_occurrence_image(
         raw_path_str = save_upload_file_securely(file, str(UPLOAD_DIR))
         saved_path = Path(raw_path_str)
 
-        # localização
-        if latitude is not None and longitude is not None:
-            endereco_real = gps_extractor.get_address_from_coords(latitude, longitude)
-            location_analysis = {
-                "latitude": latitude,
-                "longitude": longitude,
-                "address": endereco_real,
-                "city": "Recife/PE"
-            }
-        else:
-            location_analysis = gps_extractor.resolve_location(str(saved_path), camera_id)
+        location_analysis = build_location_analysis(
+            saved_path=saved_path,
+            gps_extractor=gps_extractor,
+            latitude=latitude,
+            longitude=longitude,
+            accuracy=accuracy,
+            camera_id=camera_id,
+        )
 
-        # visão computacional
         vision_analysis = None
         if run_detection == "true":
             try:
@@ -152,7 +269,7 @@ async def upload_occurrence_image(
                 vision_analysis = {
                     "success": False,
                     "message": f"Falha na visão computacional: {str(vision_exc)}",
-                    "annotated_image_path": None
+                    "annotated_image_path": None,
                 }
 
         occ_payload = occurrence_service.build_occurrence_payload(
@@ -161,14 +278,14 @@ async def upload_occurrence_image(
             source_type="manual_upload",
             reported_by="web_user",
             location_analysis=location_analysis,
-            vision_analysis=vision_analysis
+            vision_analysis=vision_analysis,
         )
 
         database_result = database_service.save_occurrence(occ_payload)
         if not database_result.get("success", False):
             return APIResponse(
                 success=False,
-                message=database_result.get("message", "Erro ao salvar ocorrência.")
+                message=database_result.get("message", "Erro ao salvar ocorrência."),
             )
 
         return APIResponse(
@@ -182,7 +299,12 @@ async def upload_occurrence_image(
                     vision_analysis.get("annotated_image_path") if vision_analysis else None,
                     "annotated",
                 ),
-            }
+                "location_source": location_analysis.get("location_source"),
+                "location_conflict": location_analysis.get("location_conflict"),
+                "location_conflict_distance_m": location_analysis.get("location_conflict_distance_m"),
+                "location_confidence": location_analysis.get("location_confidence"),
+                "device_accuracy_m": location_analysis.get("device_accuracy_m"),
+            },
         )
 
     except Exception as e:
@@ -191,4 +313,5 @@ async def upload_occurrence_image(
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8000)
